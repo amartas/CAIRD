@@ -1,3 +1,13 @@
+*.fits*.fits
+*.npy
+*.memmap
+*.pkl
+*.dict
+/CAIRDHP/
+/TrainingIterations/
+/TrainingGraphs/
+/CAIRDDatasets/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
