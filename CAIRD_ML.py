@@ -36,14 +36,14 @@ class PerformancePlotCallback(tf.keras.callbacks.Callback):
         
     def on_epoch_end(self, epoch, model_name, logs={}):
 
-        self.model.save("CAIRDTraining_" + str(epoch) + "_" + str(model_name))
+        self.model.save("CAIRDTraining_" + str(epoch) + "_" + str(model_name) + ".keras")
         
         Predictions = self.model.predict([self.TestImgs, self.TestMetadata])
         TestLoss, TestAcc = self.model.evaluate([self.TestImgs, self.TestMetadata], self.TestLabels, verbose=2)
         
-        for i in range(len(Predictions)):
-            if Predictions[i][1] > 0.2:
-                Predictions[i][1] = 1
+        #for i in range(len(Predictions)):
+        #    if Predictions[i][1] > 0.2:
+        #        Predictions[i][1] = 1
                 
         
         PredictedClasses = np.argmax(Predictions, axis=1)
@@ -129,7 +129,9 @@ def BuildCAIRD(MLDir, DatabaseDir):
     
     ClassWeights = {0: np.max(counts)/counts[0], # Need to make sure that this never returns values less than unity
                     1: np.max(counts)/counts[1],
-                    2: np.max(counts)/counts[2]}
+                    2: np.max(counts)/counts[2]
+                    }
+    
     
     print(ClassWeights, "Class Weights")
     
@@ -158,24 +160,23 @@ def BuildCAIRD(MLDir, DatabaseDir):
         # Hyperparameter optimization parameters
         
         HPDenseUnits = hp.Int("DenseUnits", min_value = 32, max_value = 256, step = 16)
-        HPConvUnits1 = hp.Int("ConvUnits1", min_value = 32, max_value = 256, step = 16)
-        HPConvUnits2 = hp.Int("ConvUnits2", min_value = 32, max_value = 256, step = 16)
-        HPRegularization = hp.Float("RegParam", min_value = 0.4, max_value = 0.8, step = 0.1)
-        HPDropout = hp.Float("Dropout", min_value = 0.2, max_value = 0.8, step = 0.1)
-        HPKernel = hp.Int("KernelSize", min_value = 3, max_value = 7, step = 16)
+        HPConvUnits = hp.Int("ConvUnits", min_value = 32, max_value = 256, step = 16)
+        HPRegularization = hp.Float("RegParam", min_value = 0.4, max_value = 0.6, step = 0.1)
+        HPDropout = hp.Float("Dropout", min_value = 0.4, max_value = 0.6, step = 0.1)
+        #HPKernel = hp.Int("KernelSize", min_value = 3, max_value = 7, step = 16)
         HPLearningRate = hp.Choice("LearningRate", values = [5e-3, 1e-3, 5e-4, 1e-4, 5e-5])
     
         # Convolutional layers
         SmallConvInput = tf.keras.Input(shape = (51, 51, 3))
-        x = layers.Conv2D(HPConvUnits1, HPKernel, activation = "relu", data_format="channels_last")(SmallConvInput)
-        x = layers.Conv2D(HPConvUnits1, HPKernel, activation = "relu", data_format="channels_last")(x)
-        x = layers.Conv2D(HPConvUnits1, HPKernel, activation = "relu", data_format="channels_last")(x)
+        x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(SmallConvInput)
+        x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(x)
+        x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(x)
         x = layers.MaxPooling2D(2, data_format="channels_last")(x)
-        x = layers.Conv2D(HPConvUnits2, HPKernel, activation = "relu", data_format="channels_last")(x)
-        x = layers.Conv2D(HPConvUnits2, HPKernel, activation = "relu", data_format="channels_last")(x)
-        x = layers.Conv2D(HPConvUnits2, HPKernel, activation = "relu", data_format="channels_last")(x)
+        x = layers.Conv2D(HPConvUnits, 3, activation = "relu", data_format="channels_last")(x)
+        x = layers.Conv2D(HPConvUnits, 3, activation = "relu", data_format="channels_last")(x)
+        x = layers.Conv2D(HPConvUnits, 3, activation = "relu", data_format="channels_last")(x)
         x = layers.GlobalMaxPooling2D()(x)
-        x = layers.Dense(64, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(x)
+        x = layers.Dense(64, activation = "relu", kernel_regularizer=regularizers.l2(0.6))(x)
         SmallConvOutput = layers.Dropout(HPDropout)(x)
         
         CNNSection = tf.keras.Model(SmallConvInput, SmallConvOutput, name = "SmallConv")
@@ -189,7 +190,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
         model = layers.Dense(HPDenseUnits, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(model)
         model = layers.Dropout(HPDropout)(model)
         model = layers.Dense(HPDenseUnits, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(model)
-        model = layers.Dropout(HPDropout)(model)
+        # model = layers.Dropout(HPDropout)(model)
         ModelOutput = layers.Dense(3, activation = "softmax")(model)
         
         model = tf.keras.Model(
@@ -212,11 +213,12 @@ def BuildCAIRD(MLDir, DatabaseDir):
         factor = 3,
         directory="CAIRD_HP",
         project_name="CAIRDLatestTraining",
+        hyperband_iterations = 5
         )
     
     StopEarly = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience = 5)
     
-    tuner.search([TrainImgs, TrainMetadata], TrainLabels, epochs = 30, validation_split = 0.1, callbacks = [StopEarly], class_weight=ClassWeights)
+    tuner.search([TrainImgs, TrainMetadata], TrainLabels, epochs = 50, validation_split = 0.1, callbacks = [StopEarly], class_weight=ClassWeights)
     
     BestParams = tuner.get_best_hyperparameters(num_trials = 1)[0]
     
@@ -226,7 +228,14 @@ def BuildCAIRD(MLDir, DatabaseDir):
     
     model = tuner.hypermodel.build(BestParams)
     model.summary()
-    history = model.fit([TrainImgs, TrainMetadata], TrainLabels, epochs=100, validation_split=0.1, callbacks=[PerfCallback])
+    
+    PerfCallback = PerformancePlotCallback(TestImgs, TestMetadata, TestLabels, "HP")
+    
+    gc.collect()
+    
+    model = ModelBuilder(BestParams)
+    
+    history = model.fit([TrainImgs, TrainMetadata], TrainLabels, epochs=50, validation_split=0.1, callbacks=[PerfCallback])
     val_acc_per_epoch = history.history['val_accuracy']
     best_epoch = val_acc_per_epoch.index(max(val_acc_per_epoch)) + 1
     print('Best epoch: %d' % (best_epoch,))
@@ -260,6 +269,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
     plt.ylabel("Number of images")
     plt.show()
     """
+    
     # Create the confusion matrix
     def MakeConfMatrix(Predictions, TestLabels, Confidence, MakePlot):
         
@@ -298,6 +308,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
     
     MakeConfMatrix(Predictions, TestLabels, 0.2, True)
     """
+
 """
 
 ClassifyImage(img, metadata)

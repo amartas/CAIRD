@@ -442,7 +442,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
     def DatasetStacker(dim):
         count = 0
         
-        """
+        
         for scipath in glob(os.path.join(DatabaseDir, "SortedData/Artifacts/*.clean.fits")):
             refpath = scipath[:-10] + "ref.fits"
             diffpath = scipath[:-10] + "diff.fits"
@@ -482,7 +482,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
                 print(Error)
                 pass
         
-        """
+        
         imgcount = sum([len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/Artifacts/"))),
                           len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/SN/"))),
                           len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/VarStars/")))
@@ -558,7 +558,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
                 ImgLabels[count] = 1
                 print("Processed SN image", count)
                 count += 1
-                
+          
         for scipath in glob(os.path.join(DatabaseDir, "ProcessedData/VarStars/*.clean.fits")):
             print(scipath)
             StackedImg, MetadataInst, IsBad = ImageStacker(os.path.join(DatabaseDir, "ProcessedData/VarStars/"), dim, os.path.basename(scipath)[:-11])
@@ -589,7 +589,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
                 ImgLabels[count] = 2
                 print("Processed varstar image", count)
                 count += 1    
-                                        
+                                     
         ImgDatabase = ImgDatabase[:(-4 * badcount - 1)]
         ImgMetadata = ImgMetadata[:(-4 * badcount - 1)] 
         ImgLabels = ImgLabels[:(-4 * badcount - 1)]
