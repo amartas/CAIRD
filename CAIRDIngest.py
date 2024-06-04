@@ -225,6 +225,7 @@ def Stamper(img, output, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = No
         hdu1[0].header["NAXIS2"] = stamp.shape[0]
         
         if CID == None or TID == None or RA == None or DEC == None or fluxrad == None or ellipticity == None or fwhm == None or bkg == None or fluxmax == None:
+            print(CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
             print("Metadata not provided.  Grabbing from fits")
             CID = hdu1[0].header["CLASSID"]
             TID = hdu1[0].header["DETECTIONID"]
