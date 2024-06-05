@@ -602,7 +602,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         
         # Holdout construction
         
-        ImgDatabase, ImgLabels, ImgMetadata = shuffle(ImgDatabase, ImgLabels, ImgMetadata, random_state=242)
+        ImgDatabase, ImgLabels, ImgMetadata = shuffle(ImgDatabase, ImgLabels, ImgMetadata, random_state=CAIRD.Randnum)
         print(ImgDatabase.shape, ImgLabels.shape, ImgMetadata.shape)
         
         HoldoutSize = int(len(ImgDatabase) * 0.05)
