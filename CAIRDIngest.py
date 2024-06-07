@@ -755,7 +755,7 @@ def InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, 
     Stamper(refpath, os.path.join(outputdir, "ProcessorTemp.ref.fits"), xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
     Stamper(diffpath, os.path.join(outputdir, "ProcessorTemp.diff.fits"), xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
     
-    StackedImg, MetadataInst, badcount, IsBad = ImageStacker(outputdir, 51, 0, "ProcessorTemp")
+    StackedImg, MetadataInst, badcount, IsBad = ImageStacker(outputdir, 51, "ProcessorTemp")
     
     if IsBad == True:
         print("Image corrupted - skipping")
