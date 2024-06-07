@@ -123,11 +123,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
 
     objecttype, counts = np.unique(ImgLabels, return_counts = True)
     
-    #counts = np.array([counts[0]/np.max(counts), counts[1]/np.max(counts), counts[2]/np.max(counts)])
-    
-    
-    
-    ClassWeights = {0: np.max(counts)/counts[0], # Need to make sure that this never returns values less than unity
+    ClassWeights = {0: np.max(counts)/counts[0], # Normalize training dataset weights
                     1: np.max(counts)/counts[1],
                     2: np.max(counts)/counts[2]
                     }
@@ -158,12 +154,10 @@ def BuildCAIRD(MLDir, DatabaseDir):
     def ModelBuilder(hp):
     
         # Hyperparameter optimization parameters
-        
         HPDenseUnits = hp.Int("DenseUnits", min_value = 32, max_value = 256, step = 16)
         HPConvUnits = hp.Int("ConvUnits", min_value = 32, max_value = 256, step = 16)
         HPRegularization = hp.Float("RegParam", min_value = 0.4, max_value = 0.6, step = 0.1)
         HPDropout = hp.Float("Dropout", min_value = 0.4, max_value = 0.6, step = 0.1)
-        #HPKernel = hp.Int("KernelSize", min_value = 3, max_value = 7, step = 16)
         HPLearningRate = hp.Choice("LearningRate", values = [5e-3, 1e-3, 5e-4, 1e-4, 5e-5])
     
         # Convolutional layers
@@ -190,7 +184,6 @@ def BuildCAIRD(MLDir, DatabaseDir):
         model = layers.Dense(HPDenseUnits, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(model)
         model = layers.Dropout(HPDropout)(model)
         model = layers.Dense(HPDenseUnits, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(model)
-        # model = layers.Dropout(HPDropout)(model)
         ModelOutput = layers.Dense(3, activation = "softmax")(model)
         
         model = tf.keras.Model(
@@ -268,46 +261,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
     plt.xlabel("Confidence in class")
     plt.ylabel("Number of images")
     plt.show()
-    """
-    
-    # Create the confusion matrix
-    def MakeConfMatrix(Predictions, TestLabels, Confidence, MakePlot):
-        
-        for i in range(len(Predictions)):
-            if Predictions[i][1] > Confidence:
-                Predictions[i][1] = 1
-                
-        
-        PredictedClasses = np.argmax(Predictions, axis=1)
-        
-        # Get correctly/incorrectly classified indices
-        CorrectIndices = np.nonzero(PredictedClasses == TestLabels)[0] 
-        IncorrectIndices = np.nonzero(PredictedClasses != TestLabels)[0]
-    
-        conf_matrix = tf.math.confusion_matrix(
-            TestLabels, PredictedClasses, num_classes=3)
-        conf_matrix = tf.cast(conf_matrix, dtype=tf.float32)
-    
-        # Normalize the confusion matrix
-        row_sums = tf.reduce_sum(conf_matrix, axis=1)[
-            :, tf.newaxis]  # Calculate row sums
-        normalized_conf_matrix = conf_matrix / row_sums
-        percentage_conf_matrix = normalized_conf_matrix * 100  # Convert to percentages
-        percentage_conf_matrix = percentage_conf_matrix.numpy()
-        if MakePlot == True:
-            plt.figure(figsize=(10, 7))
-            sns.heatmap(percentage_conf_matrix, annot=True, fmt='.2f', cmap='Blues', xticklabels=ClassNames, yticklabels=ClassNames)
-            plt.xlabel('Predicted labels')
-            plt.ylabel('True labels')
-            plt.title('Confusion Matrix')
-            plt.show()
-        print(Confidence)
-        print(percentage_conf_matrix)
-        return percentage_conf_matrix[0][1], percentage_conf_matrix[1][0], percentage_conf_matrix[1][1] # False positive, false negative, true accuracy
-    
-    
-    MakeConfMatrix(Predictions, TestLabels, 0.2, True)
-    """
+
 
 """
 

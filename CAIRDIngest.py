@@ -163,7 +163,7 @@ def Reviewer(inputdir, n_imgs, outputdir):
 
 UniformityCheck(image, edge_width)
 
-Determines whether images were taken at the edge of the chip by detecting if the edges have atypically uniform values (e.g. zeros from filling or padding of the image).
+Determines whether images were taken at the edge of the chip by detecting if the corners have atypically uniform values (e.g. zeros from filling or padding of the image).
 
 image      - Input image to be checked
 
@@ -199,7 +199,7 @@ x_pos  - X-position of the center of the stamp in the source image
 y_pos  - Y-position of the center of the stamp in the source image
 
 others - Metadata required for ML to function:
-    CID: Candidate ID
+    CID: Classification ID
     TID: Target ID
     RA: Right Ascension
     DEC: Declination
@@ -269,7 +269,6 @@ Loads, checks, and stacks 3 input images into a 3D NumPy array; loads, checks, a
 
 directory - Directory in which the images-to-be-stacked are located
 dim       - Dimension of the data (nearly always 51)
-badcount  - Utility for stacking large sets of data - the number of preceding failures to stack
 imgname   - Image NAME, no extension, just the image name (e.g. 242, not 242.clean.fits or /SN/242).  Expects all images to be of the form [integer].*.fits ascending from zero.
 
 """
@@ -387,19 +386,11 @@ def ImageStacker(directory, dim, imgname):
 
 """
 
-DatasetPreparation(directory, NumImgs, dim)
+DatasetPreparation(dim)
 
 Prepares the training data for ML training.
 
 IMPORTANT: THIS NUMPY ARRAY CAN BECOME VERY LARGE.  BE PREPARED FOR HIGH MEMORY USAGE AND THE POSSIBLE NEED FOR MEMORY MANAGEMENT!
-
-directory - Directory of training data.  Expects the subdirectories "/Artifacts", "/SN", and "/VarStars" for operation
-
-NumImgs   - Number of images to be added into the dataset.
-
-dim       - Dimension of the images (51)
-
-outputdir - Output directory for NumPy arrays and final databases
 
 """
 
@@ -447,7 +438,6 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         for scipath in glob(os.path.join(DatabaseDir, "SortedData/Artifacts/*.clean.fits")):
             refpath = scipath[:-10] + "ref.fits"
             diffpath = scipath[:-10] + "diff.fits"
-            #print(diffpath)
             try:
                 Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/Artifacts/" + str(count) + ".clean.fits"))
                 Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/Artifacts/" + str(count) + ".ref.fits"))
@@ -460,7 +450,6 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         for scipath in glob(os.path.join(DatabaseDir, "SortedData/SN/*.clean.fits")):
             refpath = scipath[:-10] + "ref.fits"
             diffpath = scipath[:-10] + "diff.fits"
-            #print(diffpath)
             try:
                 Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".clean.fits"))
                 Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".ref.fits"))
@@ -473,7 +462,6 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         for scipath in glob(os.path.join(DatabaseDir, "SortedData/VarStars/*.clean.fits")):
             refpath = scipath[:-10] + "ref.fits"
             diffpath = scipath[:-10] + "diff.fits"
-            #print(diffpath)
             try:
                 Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/VarStars/" + str(count) + ".clean.fits"))
                 Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/VarStars/" + str(count) + ".ref.fits"))
@@ -670,22 +658,6 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         MMHoldout2Metadata[:] = Holdout2Metadata[:]
         MMHoldout2Metadata.flush()
         
-        """
-        
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/ImgDatabase.npy"), ImgDatabase)
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/ImgLabels.npy"), ImgLabels)
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/ImgMetadata.npy"), ImgMetadata)
-        
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout1Imgs.npy"), Holdout1Imgs)
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout1Labels.npy"), Holdout1Labels)
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout1Metadata.npy"), Holdout1Metadata)
-        
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout2Imgs.npy"), Holdout2Imgs)
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout2Labels.npy"), Holdout2Labels)
-        np.save(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout2Metadata.npy"), Holdout2Metadata)
-        
-        """
-        
         print(ImgDatabase.shape, ImgLabels.shape, ImgMetadata.shape)
         
         del ImgDatabase, ImgLabels, ImgMetadata # Save memory
@@ -695,54 +667,9 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
     DatasetStacker(51)
     
     
-    """
-    ArtifactImgs, ArtifactMetadata = DatasetStacker(
-        os.path.join(directory, "Artifacts/"), dim)
-    #ArtifactImgs = tf.transpose(ArtifactImgs, perm=[0, 2, 3, 1])
-    np.save(os.path.join(outputdir, "ArtifactImgs.npy"), DSRotator(ArtifactImgs, outputdir))
-    np.save(os.path.join(outputdir,"ArtifactLabels.npy") , np.full(len(ArtifactImgs) * 4, 0))
-    np.save(os.path.join(outputdir,"ArtifactMetadata.npy") , np.concatenate((ArtifactMetadata, ArtifactMetadata, ArtifactMetadata, ArtifactMetadata)))
-    # Running into the sun, but I'm running behind...
-    del ArtifactImgs
-    
-    SNImgs, SNMetadata = DatasetStacker(
-        os.path.join(directory, "SN/"), dim)
-    #SNImgs = tf.transpose(SNImgs, perm=[0, 2, 3, 1])
-    np.save(os.path.join(outputdir, "SNImgs.npy"), DSRotator(SNImgs, outputdir))
-    np.save(os.path.join(outputdir, "SNLabels.npy"), np.full(len(SNImgs) * 4, 1))
-    np.save(os.path.join(outputdir,"SNMetadata.npy"), np.concatenate((SNMetadata, SNMetadata, SNMetadata, SNMetadata)))
-    
-    del SNImgs
-    
-    VarStarImgs, VarStarMetadata = DatasetStacker(
-        os.path.join(directory, "VarStars/"), dim)
-    #VarStarImgs = tf.transpose(VarStarImgs, perm=[0, 2, 3, 1])
-    np.save(os.path.join(outputdir, "VarStarImgs.npy"), DSRotator(VarStarImgs, outputdir))
-    np.save(os.path.join(outputdir, "VarStarLabels.npy"), np.full(len(VarStarImgs) * 4, 2))
-    np.save(os.path.join(outputdir, "VarStarMetadata.npy"), np.concatenate((VarStarMetadata, VarStarMetadata, VarStarMetadata, VarStarMetadata)))
-    
-    del VarStarImgs
-    
-    ImgDB = np.empty(shape=[0, dim, dim, 3])
-    ImgLabels = np.empty(shape=[0])
-    ImgMetadata = np.empty(shape=[0, 6])
-
-    for i in ["Artifact", "SN", "VarStar"]:
-        ImgDB = np.concatenate((ImgDB, np.load(os.path.join(outputdir, i + "Imgs.npy"))))
-        ImgLabels = np.concatenate((ImgLabels, np.load(os.path.join(outputdir,i + "Labels.npy"))))
-        ImgMetadata = np.concatenate((ImgMetadata, np.load(os.path.join(outputdir,i + "Metadata.npy"))))
-        # All I got's this lonesome day...
-        if i == "VarStar":
-            np.save(os.path.join(outputdir, "ImageDatabase.npy"), ImgDB)
-            np.save(os.path.join(outputdir, "ImageLabels.npy"), ImgLabels)
-            np.save(os.path.join(outputdir, "ImageMetadata.npy"), ImgMetadata)
-    print(ImgDB.shape, ImgLabels.shape)
-    print("Finished dataset creation")
-    """
-    
 """
 
-InputProcessor(scipath, refpath, diffpath, outputdir, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
 
 A wrapper function which takes in the 3 images, their metadata, the output directory, then returns the stacked image and the arrayed metadata.
 
