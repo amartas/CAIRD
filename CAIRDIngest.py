@@ -260,7 +260,7 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
             if save == True:
                 fits.writeto(output, stamp, hdu1[0].header, overwrite=True)
             else:
-                return stamp, [CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax]
+                return stamp, [RA, DEC, fwhm, ellipticity, fluxrad, fluxmax]
 
 """
 
