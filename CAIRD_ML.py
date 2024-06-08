@@ -23,7 +23,7 @@ import CAIRDIngest
 import CAIRD
 
 gc.enable()
-ClassNames = ["Artifact", "SN", "VS"]
+ClassNames = ["Artifact", "SN"]
 randnum = CAIRD.Randnum
 
 
@@ -53,7 +53,7 @@ class PerformancePlotCallback(tf.keras.callbacks.Callback):
         IncorrectIndices = np.nonzero(PredictedClasses != self.TestLabels)[0]
     
         conf_matrix = tf.math.confusion_matrix(
-            self.TestLabels, PredictedClasses, num_classes=3)
+            self.TestLabels, PredictedClasses, num_classes=2)
         conf_matrix = tf.cast(conf_matrix, dtype=tf.float32)
     
         # Normalize the confusion matrix
@@ -124,8 +124,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
     objecttype, counts = np.unique(ImgLabels, return_counts = True)
     
     ClassWeights = {0: np.max(counts)/counts[0], # Normalize training dataset weights
-                    1: np.max(counts)/counts[1],
-                    2: np.max(counts)/counts[2]
+                    1: np.max(counts)/counts[1]
                     }
     
     
@@ -161,7 +160,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
         HPLearningRate = hp.Choice("LearningRate", values = [5e-3, 1e-3, 5e-4, 1e-4, 5e-5])
     
         # Convolutional layers
-        SmallConvInput = tf.keras.Input(shape = (51, 51, 3))
+        SmallConvInput = tf.keras.Input(shape = (28, 28, 3))
         x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(SmallConvInput)
         x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(x)
         x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(x)
@@ -184,7 +183,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
         model = layers.Dense(HPDenseUnits, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(model)
         model = layers.Dropout(HPDropout)(model)
         model = layers.Dense(HPDenseUnits, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(model)
-        ModelOutput = layers.Dense(3, activation = "softmax")(model)
+        ModelOutput = layers.Dense(2, activation = "softmax")(model)
         
         model = tf.keras.Model(
             inputs=[CNNSection.input, MetadataInput],
@@ -193,7 +192,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
         
         model.compile(
             optimizer = tf.keras.optimizers.Adam(learning_rate = HPLearningRate),
-            loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True),
+            loss = tf.keras.losses.SparseCategoricalCrossentropy(),
             metrics = ["accuracy"]
             )
       
@@ -280,7 +279,6 @@ def ClassifyImage(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, R
     
     model = tf.keras.models.load_model(os.path.join(CAIRD.MLDir, "CAIRDLatestTraining.keras"))
     Prediction = model.predict([img, metadata])
-    PredictionDict = {"Artifact": Prediction[0][0],
-                      "SN": Prediction[0][1],
-                      "VarStar": Prediction[0][2]}
+    PredictionDict = {"Bogus": Prediction[0][0],
+                      "SN": Prediction[0][1]}
     return PredictionDict
