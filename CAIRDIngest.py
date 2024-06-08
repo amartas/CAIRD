@@ -18,7 +18,7 @@ import random
 import gc
 from glob import glob
 import pickle
-
+import time
 import CAIRDExceptions
 import CAIRD
 
@@ -213,20 +213,19 @@ others - Metadata required for ML to function:
 
 """
 
-def Stamper(img, output, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
+def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
+    
     with fits.open(img) as hdu1:
         # Extracts the data
         data = hdu1[0].data
         y, x = data.shape
-        stamp = data[int(y_pos) - 10 : int(y_pos) + 11, int(x_pos) - 10 : int(x_pos) + 11] # Crops the image
+        stamp = data[int(y_pos) - 11 : int(y_pos) + 11, int(x_pos) - 11 : int(x_pos) + 11] # Crops the image
         
         # Updates the FITS header with the dimensions of the stamp
         hdu1[0].header["NAXIS1"] = stamp.shape[1]
         hdu1[0].header["NAXIS2"] = stamp.shape[0]
         
         if CID == None or TID == None or RA == None or DEC == None or fluxrad == None or ellipticity == None or fwhm == None or bkg == None or fluxmax == None:
-            print(CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-            print("Metadata not provided.  Grabbing from fits")
             CID = hdu1[0].header["CLASSID"]
             TID = hdu1[0].header["DETECTIONID"]
             RA = hdu1[0].header["RA"]
@@ -236,7 +235,6 @@ def Stamper(img, output, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = No
             fwhm = hdu1[0].header["FWHM"]
             fluxmax = hdu1[0].header["FLUXMAX"]
         else:
-            print("Metadata provided - writing to fits")
             hdu1[0].header["CLASSID"] = CID
             hdu1[0].header["DETECTIONID"] = TID
             hdu1[0].header["RA"] = RA
@@ -248,18 +246,21 @@ def Stamper(img, output, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = No
             
             UniformityCheck(stamp, 2)
             
-        if stamp.shape != (21,21) or stamp is None or stamp.shape == 0: # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
+        if stamp.shape != (22,22) or stamp is None or stamp.shape == 0: # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
             print(stamp.shape)
             raise CAIRDExceptions.CorruptImage("Pre-padding dimension check failed")
             pass
         else:
             # Writes to new file
-            stamp = np.pad(stamp, 15, mode = "constant", constant_values = 0)
-            if stamp.shape != (51,51) or stamp is None or stamp.shape == 0: # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
+            stamp = np.pad(stamp, 3, mode = "constant", constant_values = 0)
+            if stamp.shape != (28,28) or stamp is None or stamp.shape == 0: # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
                 print(stamp.shape)
                 raise CAIRDExceptions.CorruptImage("Post-padding dimension check failed")
                 pass
-            fits.writeto(output, stamp, hdu1[0].header, overwrite=True)
+            if save == True:
+                fits.writeto(output, stamp, hdu1[0].header, overwrite=True)
+            else:
+                return stamp, [CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax]
 
 """
 
@@ -435,13 +436,13 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         count = 0
         
         
-        for scipath in glob(os.path.join(DatabaseDir, "SortedData/Artifacts/*.clean.fits")):
+        for scipath in glob(os.path.join(DatabaseDir, "SortedData/Bogus/*/*.clean.fits")):
             refpath = scipath[:-10] + "ref.fits"
             diffpath = scipath[:-10] + "diff.fits"
             try:
-                Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/Artifacts/" + str(count) + ".clean.fits"))
-                Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/Artifacts/" + str(count) + ".ref.fits"))
-                Stamper(diffpath, os.path.join(DatabaseDir, "ProcessedData/Artifacts/" + str(count) + ".diff.fits"))
+                Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/Bogus/" + str(count) + ".clean.fits"), True)
+                Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/Bogus/" + str(count) + ".ref.fits"), True)
+                Stamper(diffpath, os.path.join(DatabaseDir, "ProcessedData/Bogus/" + str(count) + ".diff.fits"), True)
                 count += 1
             except (CAIRDExceptions.CorruptImage, FileNotFoundError) as Error:
                 print(Error)
@@ -451,13 +452,14 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
             refpath = scipath[:-10] + "ref.fits"
             diffpath = scipath[:-10] + "diff.fits"
             try:
-                Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".clean.fits"))
-                Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".ref.fits"))
-                Stamper(diffpath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".diff.fits"))
+                Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".clean.fits"), True)
+                Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".ref.fits"), True)
+                Stamper(diffpath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".diff.fits"), True)
                 count += 1
             except (CAIRDExceptions.CorruptImage, FileNotFoundError) as Error:
                 print(Error)
                 pass
+        """
         count = 0
         for scipath in glob(os.path.join(DatabaseDir, "SortedData/VarStars/*.clean.fits")):
             refpath = scipath[:-10] + "ref.fits"
@@ -471,10 +473,9 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
                 print(Error)
                 pass
         
-        
-        imgcount = sum([len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/Artifacts/"))),
-                          len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/SN/"))),
-                          len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/VarStars/")))
+        """
+        imgcount = sum([len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/Bogus/"))),
+                          len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/SN/")))
                           ])
         ImgDatabase = np.empty((imgcount//3 * 4, dim, dim, 3))
         ImgLabels = np.empty((imgcount//3 * 4))
@@ -483,9 +484,9 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         
         count = 0
         badcount = 0
-        for scipath in glob(os.path.join(DatabaseDir, "ProcessedData/Artifacts/*.clean.fits")):
+        for scipath in glob(os.path.join(DatabaseDir, "ProcessedData/Bogus/*.clean.fits")):
             print(scipath)
-            StackedImg, MetadataInst, IsBad = ImageStacker(os.path.join(DatabaseDir, "ProcessedData/Artifacts/"), dim, os.path.basename(scipath)[:-11])
+            StackedImg, MetadataInst, IsBad = ImageStacker(os.path.join(DatabaseDir, "ProcessedData/Bogus/"), dim, os.path.basename(scipath)[:-11])
             print(os.path.basename(scipath)[:-11], "Base Name")
             
             
@@ -498,23 +499,23 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
                 ImgDatabase[count] = StackedImg
                 ImgMetadata[count] = MetadataInst
                 ImgLabels[count] = 0
-                print("Processed artifact image", count)
+                print("Processed bogus image", count)
                 print(ImgDatabase.shape, "SHAPE")
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 1)
                 ImgMetadata[count] = MetadataInst
                 ImgLabels[count] = 0
-                print("Processed artifact image", count)
+                print("Processed bogus image", count)
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 2)
                 ImgMetadata[count] = MetadataInst
                 ImgLabels[count] = 0
-                print("Processed artifact image", count)
+                print("Processed bogus image", count)
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 3)
                 ImgMetadata[count] = MetadataInst
                 ImgLabels[count] = 0
-                print("Processed artifact image", count)
+                print("Processed bogus image", count)
                 count += 1
                 
         for scipath in glob(os.path.join(DatabaseDir, "ProcessedData/SN/*.clean.fits")):
@@ -547,7 +548,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
                 ImgLabels[count] = 1
                 print("Processed SN image", count)
                 count += 1
-          
+        """
         for scipath in glob(os.path.join(DatabaseDir, "ProcessedData/VarStars/*.clean.fits")):
             print(scipath)
             StackedImg, MetadataInst, IsBad = ImageStacker(os.path.join(DatabaseDir, "ProcessedData/VarStars/"), dim, os.path.basename(scipath)[:-11])
@@ -578,7 +579,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
                 ImgLabels[count] = 2
                 print("Processed varstar image", count)
                 count += 1    
-                                     
+        """
         ImgDatabase = ImgDatabase[:(-4 * badcount - 1)]
         ImgMetadata = ImgMetadata[:(-4 * badcount - 1)] 
         ImgLabels = ImgLabels[:(-4 * badcount - 1)]
@@ -634,7 +635,8 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         
         print(ImgDatabase.dtype)
         
-        ArrInfo =  {"ImgDatabase": ImgDatabase.shape,
+        ArrInfo =  {
+                   "ImgDatabase": ImgDatabase.shape,
                    "ImgLabels": ImgLabels.shape,
                    "ImgMetadata": ImgMetadata.shape,
                    "Holdout1Imgs": Holdout1Imgs.shape,
@@ -664,7 +666,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         
         print("Finished dataset creation")
     
-    DatasetStacker(51)
+    DatasetStacker(28)
     
     
 """
@@ -678,17 +680,13 @@ A wrapper function which takes in the 3 images, their metadata, the output direc
 
 def InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax):
     
-    Stamper(scipath, os.path.join(outputdir, "ProcessorTemp.clean.fits"), xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-    Stamper(refpath, os.path.join(outputdir, "ProcessorTemp.ref.fits"), xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-    Stamper(diffpath, os.path.join(outputdir, "ProcessorTemp.diff.fits"), xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+    SciImg, SciMD = Stamper(scipath, os.path.join(outputdir, "ProcessorTemp.clean.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+    RefImg, RefMD = Stamper(refpath, os.path.join(outputdir, "ProcessorTemp.ref.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+    DiffImg, DiffMD = Stamper(diffpath, os.path.join(outputdir, "ProcessorTemp.diff.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
     
-    StackedImg, MetadataInst, IsBad = ImageStacker(outputdir, 51, "ProcessorTemp")
+    StackedImg = np.stack((SciImg, RefImg, DiffImg), axis=2)
     
-    if IsBad == True:
-        print("Image corrupted - skipping")
-        return None
-    else:
-        return StackedImg, MetadataInst
+    return StackedImg, SciMD
     
 
 
