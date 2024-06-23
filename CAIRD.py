@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Author: Aidan Martas
 import pandas as pd
 import tensorflow as tf
@@ -18,7 +19,7 @@ import gc
 from glob import glob
 
 
-BaseDir = "/home/entropian/Documents/CAIRD/"
+BaseDir = "/dark/amart04/CAIRD/"
 
 DatabaseDir = os.path.join(BaseDir, "CAIRDDatasets/")
 MLDir = os.path.join(BaseDir, "CAIRDML/")

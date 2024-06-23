@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Author: Aidan Martas
 
 import os
@@ -95,6 +96,22 @@ def QueryRow(CandID):
     except Error as e:
         print(e)
 
+def QueryLastEvaledCandID():
+    try:
+        with connect(
+                host = "localhost",
+                user = "dlt40",
+                password = "dlt40",
+                database="dlt40") as connection:
+            print(connection, "QueryLastCandID")
+            GetData = "SELECT candidateid FROM CAIRDCandidates ORDER BY candidateid DESC LIMIT 1"
+            with connection.cursor() as cursor:
+                cursor.execute(GetData)
+                DataRow = cursor.fetchall()
+                return DataRow
+    except Error as e:
+        print(e)
+
 def QueryLastCandID():
     try:
         with connect(
@@ -129,7 +146,7 @@ def UpdateTable(CAIRDClassification, CandID, CID, TID, filedir, filename, xpos, 
             with connection.cursor() as cursor:
                 cursor.execute(WriteData, RowInfo)
                 connection.commit()
-                print("Added candidate " + str(CID) + " to the classification table as a: " + ClassificationNames[CID])
+                print("Added candidate with RF id " + str(CID) + " to the classification table as a: " + ClassificationNames[CID])
     except Error as e:
         print("ERROR OCCURRED")
         print(e)
@@ -169,37 +186,34 @@ UserID = "U06B6N2LGQ6"
 PrevCand = None
 CandID = 0
 while True == True: # RUNS FOREVER
-    MaxCandID = QueryLastCandID()[0][0]
-    print(MaxCandID, "MaxCandID")
+    MaxCandID = QueryLastEvaledCandID()[0][0]
+    LastCandID = QueryLastCandID()[0][0]
     if CandID == 0:
         CandID = MaxCandID
         print("Initialized CandID", CandID)
 
-    if MaxCandID < CandID:
+    if LastCandID < CandID:
         print("Out of images to classify")
         time.sleep(1)
         continue
-    print(CandID, "CandID EARLY")
+
     RowQuery = QueryRow(CandID)
-    print(RowQuery, "ROW QUERY ROW QUERY ROW QUERY")
-    if RowQuery == None:
+    ImgEval = EvalImg(RowQuery)
+
+    if len(RowQuery[0]) == 1:
         print("Image not marked for classification - skipping")
         CandID += 1
-        time.sleep(1)
         continue
-    elif EvalImg(RowQuery) == None:
+    elif ImgEval == None:
         print("Image not marked for classification - skipping")
         CandID += 1
-        time.sleep(1)
         continue
     else:
         DataArr = QueryRow(CandID)
-        Classification, CandID, TID = EvalImg(DataArr)
-        print(CandID, "Post-CandID")
+        Classification, CandID, TID = ImgEval
+
         CandID, CID, TID, filedir, filename, xpos, ypos, RA, DEC, fwhm, ellipticity, bkg, fluxmax, fluxrad = DataArr[0]
-        print(CandID, "PostCandID2")
-        print(Classification)
-        print(type(Classification))
+
 
         if type(Classification) != dict:
             message = f"<@{UserID}> " + "Classification failed on candidate.\n Target Link: https://dark.physics.ucdavis.edu/dlt40/view?object=" + str(TID)
@@ -211,11 +225,12 @@ while True == True: # RUNS FOREVER
             key = max(Classification, key=Classification.get)
             if key == "SN":
                 message = f"<@{UserID}> " + key + " detected with " + str(Classification[key]*100)[:-12] + "%" + " confidence.\n Target Link: https://dark.physics.ucdavis.edu/dlt40/view?object=" + str(TID)
+                payload = MessageFormatter(message)
+                SlackMessage(payload, webhook)
             else:
                 message = key + " detected with " + str(Classification[key]*100)[:-12] + "%" + " confidence.\n Target Link: https://dark.physics.ucdavis.edu/dlt40/view?object=" + str(TID)
-            payload = MessageFormatter(message)
+            #payload = MessageFormatter(message)
             #SlackMessage(payload, webhook)
             CID = DataArr[0][1]
             UpdateTable(key, CandID, CID, TID, filedir, filename, xpos, ypos, RA, DEC, fwhm, ellipticity, fluxmax, fluxrad, "CAIRD")
             CandID += 1
-            pass
