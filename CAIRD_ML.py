@@ -273,7 +273,7 @@ Takes the image and and metadata as inputs and returns classification confidence
 def ClassifyImage(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax): # I cannot describe how good it feels to finally have this function
     
     img, metadata = CAIRDIngest.InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-
+    
     img = np.expand_dims(img, axis=0)
     metadata = np.expand_dims(metadata, axis=0)
     
