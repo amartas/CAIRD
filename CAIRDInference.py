@@ -198,13 +198,15 @@ while True == True: # RUNS FOREVER
         continue
 
     RowQuery = QueryRow(CandID)
-    ImgEval = EvalImg(RowQuery)
 
     if len(RowQuery[0]) == 1:
         print("Image not marked for classification - skipping")
         CandID += 1
         continue
-    elif ImgEval == None:
+    
+    ImgEval = EvalImg(RowQuery)
+    
+    if ImgEval == None:
         print("Image not marked for classification - skipping")
         CandID += 1
         continue
