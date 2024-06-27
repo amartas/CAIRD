@@ -23,8 +23,6 @@ import time
 import CAIRDExceptions
 import CAIRD
 
-# If you wish to make an apple pie from scratch, you must first invent the universe.  - Carl Sagan
-
 DatabaseDir = CAIRD.DatabaseDir
 
 
@@ -222,6 +220,9 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
         y, x = data.shape
         stamp = data[int(y_pos) - 11 : int(y_pos) + 11, int(x_pos) - 11 : int(x_pos) + 11] # Crops the image
         
+        # Uniformity check
+        UniformityCheck(stamp, 4)
+        
         # Updates the FITS header with the dimensions of the stamp
         hdu1[0].header["NAXIS1"] = stamp.shape[1]
         hdu1[0].header["NAXIS2"] = stamp.shape[0]
@@ -235,6 +236,27 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
             ellipticity = hdu1[0].header["ELLIPTICITY"]
             fwhm = hdu1[0].header["FWHM"]
             fluxmax = hdu1[0].header["FLUXMAX"]
+            
+            for item in [CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, fluxmax]:
+                if type(item) == str: # Missing data gets inputted as a blank float - this catches it
+                    raise CAIRDExceptions.CorruptImage("Missing metadata")
+            
+            # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
+            if stamp.shape != (22,22) or stamp is None or stamp.shape == 0:
+                print(stamp.shape)
+                raise CAIRDExceptions.CorruptImage("Pre-padding dimension check failed")
+                pass
+            
+            # NaN check
+            if np.isnan(data).any() == True:
+                raise CAIRDExceptions.CorruptImage("NaN data in stamp - skipping")
+                pass
+            
+            # Stops you from going to hell
+            if np.max(data) <= 0:  # Avoids dividing by zero; thank you Prof. Hafez!
+                raise CAIRDExceptions.CorruptImage("Zero max in stamp - avoiding going to hell")
+                pass
+            
         else:
             hdu1[0].header["CLASSID"] = CID
             hdu1[0].header["DETECTIONID"] = TID
@@ -245,23 +267,35 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
             hdu1[0].header["FWHM"] = fwhm
             hdu1[0].header["FLUXMAX"] = fluxmax
             
-            UniformityCheck(stamp, 2)
+            for item in [CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, fluxmax]:
+                if type(item) == str: # Missing data gets inputted as a blank float - this catches it
+                    raise CAIRDExceptions.CorruptImage("Missing metadata")
             
-        if stamp.shape != (22,22) or stamp is None or stamp.shape == 0: # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
-            print(stamp.shape)
-            raise CAIRDExceptions.CorruptImage("Pre-padding dimension check failed")
-            pass
-        else:
-            # Writes to new file
-            stamp = np.pad(stamp, 3, mode = "constant", constant_values = 0)
-            if stamp.shape != (28,28) or stamp is None or stamp.shape == 0: # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
+            # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
+            if stamp.shape != (22,22) or stamp is None or stamp.shape == 0:
                 print(stamp.shape)
-                raise CAIRDExceptions.CorruptImage("Post-padding dimension check failed")
+                raise CAIRDExceptions.CorruptImage("Pre-padding dimension check failed")
                 pass
-            if save == True:
-                fits.writeto(output, stamp, hdu1[0].header, overwrite=True)
-            else:
-                return stamp, [RA, DEC, fwhm, ellipticity, fluxrad, fluxmax]
+            
+            # NaN check
+            if np.isnan(data).any() == True:
+                raise CAIRDExceptions.CorruptImage("NaN data in stamp - skipping")
+                pass
+            
+            # Stops you from going to hell
+            if np.max(data) <= 0:  # Avoids dividing by zero; thank you Prof. Hafez!
+                raise CAIRDExceptions.CorruptImage("Zero max in stamp - avoiding going to hell")
+                pass
+        # Writes to new file
+        stamp = np.pad(stamp, 3, mode = "constant", constant_values = 0)
+        if stamp.shape != (28,28) or stamp is None or stamp.shape == 0: # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
+            print(stamp.shape)
+            raise CAIRDExceptions.CorruptImage("Post-padding dimension check failed")
+            pass
+        if save == True:
+            fits.writeto(output, stamp, hdu1[0].header, overwrite=True)
+        else:
+            return stamp, [RA, DEC, fwhm, ellipticity, fluxrad, fluxmax]
 
 """
 
@@ -388,6 +422,25 @@ def ImageStacker(directory, dim, imgname):
 
 """
 
+InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+
+A wrapper function which takes in the 3 images, their metadata, the output directory, then returns the stacked image and the arrayed metadata.
+
+"""
+
+
+def InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
+    
+    SciImg, SciMD = Stamper(scipath, os.path.join(outputdir, "ProcessorTemp.clean.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+    RefImg, RefMD = Stamper(refpath, os.path.join(outputdir, "ProcessorTemp.ref.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+    DiffImg, DiffMD = Stamper(diffpath, os.path.join(outputdir, "ProcessorTemp.diff.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+    
+    StackedImg = np.stack((SciImg, RefImg, DiffImg), axis=2)
+    
+    return StackedImg, SciMD
+
+"""
+
 DatasetPreparation(dim)
 
 Prepares the training data for ML training.
@@ -436,45 +489,6 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
     def DatasetStacker(dim):
         count = 0
         
-        
-        for scipath in glob(os.path.join(DatabaseDir, "SortedData/Bogus/*/*.clean.fits")):
-            refpath = scipath[:-10] + "ref.fits"
-            diffpath = scipath[:-10] + "diff.fits"
-            try:
-                Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/Bogus/" + str(count) + ".clean.fits"), True)
-                Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/Bogus/" + str(count) + ".ref.fits"), True)
-                Stamper(diffpath, os.path.join(DatabaseDir, "ProcessedData/Bogus/" + str(count) + ".diff.fits"), True)
-                count += 1
-            except (CAIRDExceptions.CorruptImage, FileNotFoundError) as Error:
-                print(Error)
-                pass
-        count = 0
-        for scipath in glob(os.path.join(DatabaseDir, "SortedData/SN/*.clean.fits")):
-            refpath = scipath[:-10] + "ref.fits"
-            diffpath = scipath[:-10] + "diff.fits"
-            try:
-                Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".clean.fits"), True)
-                Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".ref.fits"), True)
-                Stamper(diffpath, os.path.join(DatabaseDir, "ProcessedData/SN/" + str(count) + ".diff.fits"), True)
-                count += 1
-            except (CAIRDExceptions.CorruptImage, FileNotFoundError) as Error:
-                print(Error)
-                pass
-        """
-        count = 0
-        for scipath in glob(os.path.join(DatabaseDir, "SortedData/VarStars/*.clean.fits")):
-            refpath = scipath[:-10] + "ref.fits"
-            diffpath = scipath[:-10] + "diff.fits"
-            try:
-                Stamper(scipath, os.path.join(DatabaseDir, "ProcessedData/VarStars/" + str(count) + ".clean.fits"))
-                Stamper(refpath, os.path.join(DatabaseDir, "ProcessedData/VarStars/" + str(count) + ".ref.fits"))
-                Stamper(diffpath, os.path.join(DatabaseDir, "ProcessedData/VarStars/" + str(count) + ".diff.fits"))
-                count += 1
-            except (CAIRDExceptions.CorruptImage, FileNotFoundError) as Error:
-                print(Error)
-                pass
-        
-        """
         imgcount = sum([len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/Bogus/"))),
                           len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/SN/")))
                           ])
@@ -485,102 +499,79 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
         
         count = 0
         badcount = 0
-        for scipath in glob(os.path.join(DatabaseDir, "ProcessedData/Bogus/*.clean.fits")):
-            print(scipath)
-            StackedImg, MetadataInst, IsBad = ImageStacker(os.path.join(DatabaseDir, "ProcessedData/Bogus/"), dim, os.path.basename(scipath)[:-11])
-            print(os.path.basename(scipath)[:-11], "Base Name")
+        for scipath in glob(os.path.join(DatabaseDir, "SortedData/Bogus/*/*.clean.fits")):
+            refpath = scipath[:-10] + "ref.fits"
+            diffpath = scipath[:-10] + "diff.fits"
             
-            
-            if IsBad == True:
-                print("Bad image at", badcount)
+            if os.path.exists(refpath) == False or os.path.exists(diffpath) == False:
+                print("Missing files")
                 badcount += 1
-                pass
+                continue
             
-            else:
+            print(refpath)
+            try:
+                StackedImg, StackMD = InputProcessor(scipath, refpath, diffpath, "", 25, 25)
                 ImgDatabase[count] = StackedImg
-                ImgMetadata[count] = MetadataInst
+                print(StackMD)
+                ImgMetadata[count] = StackMD
                 ImgLabels[count] = 0
                 print("Processed bogus image", count)
                 print(ImgDatabase.shape, "SHAPE")
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 1)
-                ImgMetadata[count] = MetadataInst
+                ImgMetadata[count] = StackMD
                 ImgLabels[count] = 0
                 print("Processed bogus image", count)
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 2)
-                ImgMetadata[count] = MetadataInst
+                ImgMetadata[count] = StackMD
                 ImgLabels[count] = 0
                 print("Processed bogus image", count)
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 3)
-                ImgMetadata[count] = MetadataInst
+                ImgMetadata[count] = StackMD
                 ImgLabels[count] = 0
                 print("Processed bogus image", count)
                 count += 1
+            except CAIRDExceptions.CorruptImage as Error:
+                print(Error)
+                badcount += 1
+                continue
                 
-        for scipath in glob(os.path.join(DatabaseDir, "ProcessedData/SN/*.clean.fits")):
-            print(scipath)
-            StackedImg, MetadataInst, IsBad = ImageStacker(os.path.join(DatabaseDir, "ProcessedData/SN/"), dim, os.path.basename(scipath)[:-11])
+        for scipath in glob(os.path.join(DatabaseDir, "SortedData/SN/*.clean.fits")):
+            refpath = scipath[:-10] + "ref.fits"
+            diffpath = scipath[:-10] + "diff.fits"
+            print(refpath)
             
-            if IsBad == True:
-                print("Bad image at", badcount)
-                badcount += 1
-                pass
-            
-            else:
+            try:
+                StackedImg, StackMD = InputProcessor(scipath, refpath, diffpath, "", 25, 25)
+                print(StackMD)
                 ImgDatabase[count] = StackedImg
-                ImgMetadata[count] = MetadataInst
+                ImgMetadata[count] = StackMD
                 ImgLabels[count] = 1
-                print("Processed SN image", count)
+                print("Processed bogus image", count)
+                print(ImgDatabase.shape, "SHAPE")
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 1)
-                ImgMetadata[count] = MetadataInst
+                ImgMetadata[count] = StackMD
                 ImgLabels[count] = 1
-                print("Processed SN image", count)
+                print("Processed bogus image", count)
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 2)
-                ImgMetadata[count] = MetadataInst
+                ImgMetadata[count] = StackMD
                 ImgLabels[count] = 1
-                print("Processed SN image", count)
+                print("Processed bogus image", count)
                 count += 1
                 ImgDatabase[count] = np.rot90(StackedImg, 3)
-                ImgMetadata[count] = MetadataInst
+                ImgMetadata[count] = StackMD
                 ImgLabels[count] = 1
-                print("Processed SN image", count)
+                print("Processed bogus image", count)
                 count += 1
-        """
-        for scipath in glob(os.path.join(DatabaseDir, "ProcessedData/VarStars/*.clean.fits")):
-            print(scipath)
-            StackedImg, MetadataInst, IsBad = ImageStacker(os.path.join(DatabaseDir, "ProcessedData/VarStars/"), dim, os.path.basename(scipath)[:-11])
-            
-            if IsBad == True:
-                print("Bad image at", badcount)
+            except CAIRDExceptions.CorruptImage as Error:
+                print(Error)
                 badcount += 1
-                pass
-            
-            else:
-                ImgDatabase[count] = StackedImg
-                ImgMetadata[count] = MetadataInst
-                ImgLabels[count] = 2
-                print("Processed varstar image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 1)
-                ImgMetadata[count] = MetadataInst
-                ImgLabels[count] = 2
-                print("Processed varstar image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 2)
-                ImgMetadata[count] = MetadataInst
-                ImgLabels[count] = 2
-                print("Processed varstar image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 3)
-                ImgMetadata[count] = MetadataInst
-                ImgLabels[count] = 2
-                print("Processed varstar image", count)
-                count += 1    
-        """
+                continue
+
         ImgDatabase = ImgDatabase[:(-4 * badcount - 1)]
         ImgMetadata = ImgMetadata[:(-4 * badcount - 1)] 
         ImgLabels = ImgLabels[:(-4 * badcount - 1)]
@@ -669,26 +660,7 @@ def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
     
     DatasetStacker(28)
     
-    
-"""
-
-InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-
-A wrapper function which takes in the 3 images, their metadata, the output directory, then returns the stacked image and the arrayed metadata.
-
-"""
-
-
-def InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax):
-    
-    SciImg, SciMD = Stamper(scipath, os.path.join(outputdir, "ProcessorTemp.clean.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-    RefImg, RefMD = Stamper(refpath, os.path.join(outputdir, "ProcessorTemp.ref.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-    DiffImg, DiffMD = Stamper(diffpath, os.path.join(outputdir, "ProcessorTemp.diff.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-    
-    StackedImg = np.stack((SciImg, RefImg, DiffImg), axis=2)
-    
-    return StackedImg, SciMD
-    
+#DatasetPreparation(28)
 
 
 

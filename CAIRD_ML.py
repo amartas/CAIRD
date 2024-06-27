@@ -122,7 +122,13 @@ def BuildCAIRD(MLDir, DatabaseDir):
     print(np.nanmax(ImgDatabase))
     print(ImgMetadata.shape)
 
+    print(np.unique(ImgLabels), "UNIQUE VALS IN LABELS")
+
     objecttype, counts = np.unique(ImgLabels, return_counts = True)
+    print(objecttype, "TYPES IN LABELS")
+    print(ImgLabels)
+    
+    print(np.unique([0,1,0,1,0,0,1,1,1,1,0,0,10,2]))
     
     ClassWeights = {0: np.max(counts)/counts[0], # Normalize training dataset weights
                     1: np.max(counts)/counts[1]
@@ -138,7 +144,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
     print(TrainImgs.shape)
     print(TrainLabels.shape)
     print(TrainMetadata.shape)
-    print(TestImgs.shape)
+    print(TestImgs.shape, "TEST IMAGE SHAPE")
     print(TestLabels.shape)
     print(TestMetadata.shape)
     
@@ -152,7 +158,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
     strategy = tf.distribute.MirroredStrategy()
     
     def ModelBuilder(hp):
-    
+
         # Hyperparameter optimization parameters
         HPDenseUnits = hp.Int("DenseUnits", min_value = 32, max_value = 256, step = 16)
         HPConvUnits = hp.Int("ConvUnits", min_value = 32, max_value = 256, step = 16)
@@ -250,14 +256,27 @@ def BuildCAIRD(MLDir, DatabaseDir):
     hypermodel = tf.keras.models.load_model(os.path.join(MLDir, "CAIRDLatestTraining.keras"))
     
     Predictions = hypermodel.predict([TestImgs, TestMetadata])
-    TestLoss, TestAcc = hypermodel.evaluate([TestImgs, TestMetadata], TestLabels, verbose=2)
+    
+    #TestLoss, TestAcc = hypermodel.evaluate([TestImgs, TestMetadata], TestLabels, verbose=2)
     
     # Get the class with the highest probability
     
-    print("\nTest accuracy:", TestAcc)
+    #print("\nTest accuracy:", TestAcc)
     
+    sncount = 0
+    boguscount = 0
+    for i in Predictions:
+        if i[0] >= 0.5:
+            sncount += 1
+        if i[1] >= 0.5:
+            boguscount += 1
     
-    plt.hist(Predictions, bins=10)
+    print(sncount, boguscount, "SN AND BOGUS COUNTS")
+    
+    print(TestImgs.shape)
+    print(TestMetadata.shape)
+    
+    plt.hist(Predictions[0], bins=20)
     plt.xlabel("Confidence in class")
     plt.ylabel("Number of images")
     plt.show()
@@ -273,13 +292,16 @@ Takes the image and and metadata as inputs and returns classification confidence
 
 def ClassifyImage(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax): # I cannot describe how good it feels to finally have this function
     
-    img, metadata = CAIRDIngest.InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-    
-    img = np.expand_dims(img, axis=0)
-    metadata = np.expand_dims(metadata, axis=0)
-    
+    InputImg, InputMD = CAIRDIngest.InputProcessor(scipath, refpath, diffpath, "", xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+
+    InputMD = np.asarray(InputMD)
+
+    InputImg, InputMD = np.array([InputImg]), np.array([InputMD])
+
     model = tf.keras.models.load_model(os.path.join(CAIRD.MLDir, "CAIRDLatestTraining.keras"))
-    Prediction = model.predict([img, metadata])
+    Prediction = model.predict([InputImg, InputMD])
     PredictionDict = {"Bogus": Prediction[0][0],
                       "SN": Prediction[0][1]}
     return PredictionDict
+
+#BuildCAIRD(CAIRD.MLDir, CAIRD.DatabaseDir)

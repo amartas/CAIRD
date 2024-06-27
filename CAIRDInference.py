@@ -173,9 +173,9 @@ def EvalImg(DataArr):
 
     print("Classifying...")
     try:
-        return CAIRD.ClassifyImage(scipath, refpath, diffpath, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax), CandID, TID
-    except CAIRDExceptions.CorruptImage:
-        print("Invalid image - skipping")
+        return CAIRD.ClassifyImage(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax), CandID, TID
+    except CAIRDExceptions.CorruptImage as CorrError:
+        print(CorrError)
         return None
 
 

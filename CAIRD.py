@@ -19,7 +19,7 @@ import gc
 from glob import glob
 
 
-BaseDir = "/dark/amart04/CAIRD/"
+BaseDir = "/home/entropian/Documents/CAIRD/"
 
 DatabaseDir = os.path.join(BaseDir, "CAIRDDatasets/")
 MLDir = os.path.join(BaseDir, "CAIRDML/")
@@ -39,8 +39,8 @@ def BuildCAIRD(MLDir, DatabaseDir):
 def Reviewer(inputdir, n_imgs, outputdir):
     CAIRDIngest.Reviewer(inputdir, n_imgs, outputdir)
     
-def InputProcessor(scipath, refpath, diffpath, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax):
-    CAIRDIngest.InputProcessor(scipath, refpath, diffpath, TempStorageDir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+def InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
+    return CAIRDIngest.InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None)
     
 def ClassifyImage(scipath, refpath, diffpath, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax):
     return CAIRD_ML.ClassifyImage(scipath, refpath, diffpath, TempStorageDir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
