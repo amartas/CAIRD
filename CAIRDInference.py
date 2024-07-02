@@ -160,7 +160,7 @@ def EvalImg(DataArr):
 
 
 
-    if CID != 1:
+    if CID != 1 and CID != 11:
         print("Skipping classification - image is a: " + ClassificationNames[CID])
         return
     filepath = os.path.join(filedir, filename)
@@ -199,7 +199,8 @@ while True == True: # RUNS FOREVER
 
     RowQuery = QueryRow(CandID)
 
-    if len(RowQuery[0]) == 1:
+
+    if 1 > len(RowQuery):
         print("Image not marked for classification - skipping")
         CandID += 1
         continue
