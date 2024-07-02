@@ -160,7 +160,7 @@ def EvalImg(DataArr):
 
 
 
-    if CID != 1 and CID != 11:
+    if CID != 1:
         print("Skipping classification - image is a: " + ClassificationNames[CID])
         return
     filepath = os.path.join(filedir, filename)
