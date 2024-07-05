@@ -299,7 +299,7 @@ def ClassifyImage(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, R
     InputImg, InputMD = np.array([InputImg]), np.array([InputMD])
 
     model = tf.keras.models.load_model(os.path.join(CAIRD.MLDir, "CAIRDLatestTraining.keras"))
-    Prediction = model.predict([InputImg, InputMD])
+    Prediction = model.predict(InputImg)
     PredictionDict = {"Bogus": Prediction[0][0],
                       "SN": Prediction[0][1]}
     return PredictionDict
