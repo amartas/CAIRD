@@ -4,6 +4,7 @@
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import datasets, layers, models
+from tensorflow.keras.utils import Sequence
 from keras import backend as K
 from astropy.io import fits
 import os
@@ -11,7 +12,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 import keras_tuner as kt
 from tensorflow.keras import regularizers
@@ -26,35 +27,33 @@ import CAIRD
 gc.enable()
 ClassNames = ["Artifact", "SN"]
 randnum = CAIRD.Randnum
+strategy = tf.distribute.MirroredStrategy()
 
 
 class PerformancePlotCallback(tf.keras.callbacks.Callback):
-    def __init__(self, TestImgs, TestMetadata, TestLabels, model_name):
-        self.TestImgs = TestImgs
-        self.TestMetadata = TestMetadata
-        self.TestLabels = TestLabels
+    def __init__(self, Dataset, model_name):
+        self.Dataset = Dataset
         self.model_name = model_name
         
     def on_epoch_end(self, epoch, model_name, logs={}):
-
-        self.model.save("CAIRDTraining_" + str(epoch) + "_" + str(model_name) + ".keras")
         
-        Predictions = self.model.predict([self.TestImgs, self.TestMetadata])
-        TestLoss, TestAcc = self.model.evaluate([self.TestImgs, self.TestMetadata], self.TestLabels, verbose=2)
+        TestLabels = np.concatenate([y for x, y in self.Dataset], axis=0)
         
+        #self.model.save("CAIRDTraining_" + str(epoch) + "_" + str(model_name) + ".keras")
+        self.model.save_weights(os.path.join(CAIRD.MLDir, "CAIRDTraining_" + str(epoch) + "_" + str(model_name) + ".weights.h5"))
+        Predictions = self.model.predict(self.Dataset)
+        TestLoss, TestAcc = self.model.evaluate(self.Dataset, verbose=2)
+        print("Evaluated test images for callback")
+        print("TestLoss:", TestLoss)
+        print("TestAcc:", TestAcc)
         #for i in range(len(Predictions)):
         #    if Predictions[i][1] > 0.2:
         #        Predictions[i][1] = 1
-                
         
         PredictedClasses = np.argmax(Predictions, axis=1)
-        
-        # Get correctly/incorrectly classified indices
-        CorrectIndices = np.nonzero(PredictedClasses == self.TestLabels)[0] 
-        IncorrectIndices = np.nonzero(PredictedClasses != self.TestLabels)[0]
     
         conf_matrix = tf.math.confusion_matrix(
-            self.TestLabels, PredictedClasses, num_classes=2)
+            TestLabels, PredictedClasses, num_classes=2)
         conf_matrix = tf.cast(conf_matrix, dtype=tf.float32)
     
         # Normalize the confusion matrix
@@ -76,6 +75,45 @@ class PerformancePlotCallback(tf.keras.callbacks.Callback):
         plt.close()
         gc.collect()
 
+
+
+def ConvNeXt():
+    model = tf.keras.applications.ConvNeXtTiny(
+                    model_name="convnext_tiny",
+                    include_top=True,
+                    include_preprocessing=True,
+                    weights=None,
+                    input_tensor=None,
+                    input_shape=(50,50,3),
+                    pooling="max",
+                    classes=2,
+                    classifier_activation="softmax",
+                    )
+    return model
+
+def CompileNN(model):
+    model.compile(
+        optimizer = tf.keras.optimizers.Adam(),
+        loss = tf.keras.losses.SparseCategoricalCrossentropy(),
+        metrics = ["accuracy"]
+        )
+
+def DataGenerator(images, labels, batch_size):
+    num_samples = images.shape[0]
+    while True:
+        for start in range(0, num_samples, batch_size):
+            end = min(start + batch_size, num_samples)
+            yield images[start:end], labels[start:end]
+
+def create_tf_dataset(images, labels, batch_size):
+    dataset = tf.data.Dataset.from_generator(
+        lambda: DataGenerator(images, labels, batch_size),
+        output_signature=(
+            tf.TensorSpec(shape=(None, 50, 50, 3), dtype=tf.float32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int64)
+        )
+    )
+    return dataset
 
 """
 
@@ -103,183 +141,82 @@ def BuildCAIRD(MLDir, DatabaseDir):
         plt.xlabel("{} ({})".format(ClassNames[prediction],
                                              classification))
     
+    BatchSize = 64
     
-    ArrInfoFile = open(os.path.join(CAIRD.DatabaseDir, "Arrays/DatasetInfo.dict"), "r")
-    DatabaseInfo = ArrInfoFile.read()
-    ArrInfoFile.close()
-    DatabaseInfo = eval(DatabaseInfo)
+    FullData = tf.data.Dataset.load(os.path.join(CAIRD.DatabaseDir, "TF/CurrentDataset"))
     
-    print(DatabaseInfo)
+    DatasetSize = tf.data.experimental.cardinality(FullData).numpy()
     
-    ImgDatabase = np.memmap(os.path.join(DatabaseDir, "Arrays/ImgDatabase.memmap"), mode = "r", dtype = "float64", shape = DatabaseInfo["ImgDatabase"])
-    ImgLabels = np.memmap(os.path.join(DatabaseDir, "Arrays/ImgLabels.memmap"), mode = "r", dtype = "float64", shape = DatabaseInfo["ImgLabels"])
-    ImgMetadata = np.memmap(os.path.join(DatabaseDir, "Arrays/ImgMetadata.memmap"), mode = "r", dtype = "float64", shape = DatabaseInfo["ImgMetadata"])
+    TrainSize = int(0.8 * DatasetSize)
+    ValSize = int(0.1 * DatasetSize)
+    TestSize = DatasetSize - TrainSize - ValSize
     
+    TrainData = FullData.take(TrainSize)
+    ValData = FullData.skip(TrainSize).take(ValSize)
+    TestData = FullData.skip(TrainSize + ValSize)
 
-    print(ImgDatabase.shape, "Database shape")
-    print(ImgLabels.shape)
-    # Drove my Chevy to the levee but the levee was dry...
-    print(np.nanmax(ImgDatabase))
-    print(ImgMetadata.shape)
-
-    print(np.unique(ImgLabels), "UNIQUE VALS IN LABELS")
-
-    objecttype, counts = np.unique(ImgLabels, return_counts = True)
-    print(objecttype, "TYPES IN LABELS")
-    print(ImgLabels)
     
-    print(np.unique([0,1,0,1,0,0,1,1,1,1,0,0,10,2]))
+    #TrainData = TrainData.batch(BatchSize).prefetch(tf.data.experimental.AUTOTUNE)
+    #ValData = ValData.batch(BatchSize).prefetch(tf.data.experimental.AUTOTUNE)
+    #TestData = TestData.batch(BatchSize).prefetch(tf.data.experimental.AUTOTUNE)
+    
+    TrainLabels = np.concatenate([y for x, y in TrainData], axis=0)
+    print(len(TrainLabels), "TL LENGTH")
+    objecttype, counts = np.unique(TrainLabels, return_counts = True)
     
     ClassWeights = {0: np.max(counts)/counts[0], # Normalize training dataset weights
                     1: np.max(counts)/counts[1]
                     }
-    
-    
+    del TrainLabels, objecttype, counts
     print(ClassWeights, "Class Weights")
     
-    
-    
-    TrainImgs, TestImgs, TrainLabels, TestLabels, TrainMetadata, TestMetadata = train_test_split(ImgDatabase, ImgLabels, ImgMetadata, random_state=randnum, test_size=0.05)
-    
-    print(TrainImgs.shape)
-    print(TrainLabels.shape)
-    print(TrainMetadata.shape)
-    print(TestImgs.shape, "TEST IMAGE SHAPE")
-    print(TestLabels.shape)
-    print(TestMetadata.shape)
-    
-    
-    
-    print(ClassWeights)
-    
-    del ImgDatabase, ImgLabels, ImgMetadata # Save memory
     gc.collect()
     
-    strategy = tf.distribute.MirroredStrategy()
+    model = ConvNeXt()
+    CompileNN(model)
     
-    def ModelBuilder(hp):
-
-        # Hyperparameter optimization parameters
-        HPDenseUnits = hp.Int("DenseUnits", min_value = 32, max_value = 256, step = 16)
-        HPConvUnits = hp.Int("ConvUnits", min_value = 32, max_value = 256, step = 16)
-        HPRegularization = hp.Float("RegParam", min_value = 0.4, max_value = 0.6, step = 0.1)
-        HPDropout = hp.Float("Dropout", min_value = 0.4, max_value = 0.6, step = 0.1)
-        HPLearningRate = hp.Choice("LearningRate", values = [5e-3, 1e-3, 5e-4, 1e-4, 5e-5])
+    PerfCallback = PerformancePlotCallback(ValData, "ConvNeXtTiny")
     
-        # Convolutional layers
-        SmallConvInput = tf.keras.Input(shape = (28, 28, 3))
-        x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(SmallConvInput)
-        x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(x)
-        x = layers.Conv2D(HPConvUnits/2, 3, activation = "relu", data_format="channels_last")(x)
-        x = layers.MaxPooling2D(2, data_format="channels_last")(x)
-        x = layers.Conv2D(HPConvUnits, 3, activation = "relu", data_format="channels_last")(x)
-        x = layers.Conv2D(HPConvUnits, 3, activation = "relu", data_format="channels_last")(x)
-        x = layers.Conv2D(HPConvUnits, 3, activation = "relu", data_format="channels_last")(x)
-        x = layers.GlobalMaxPooling2D()(x)
-        x = layers.Dense(64, activation = "relu", kernel_regularizer=regularizers.l2(0.6))(x)
-        SmallConvOutput = layers.Dropout(HPDropout)(x)
-        
-        CNNSection = tf.keras.Model(SmallConvInput, SmallConvOutput, name = "SmallConv")
-        CNNSection.summary()
-        
-        # Metadata concatenation
-        MetadataInput = tf.keras.Input(shape = (6,))
-        MetadataNormalized = layers.BatchNormalization()(MetadataInput)
-        
-        model = layers.Concatenate()([CNNSection.output, MetadataNormalized])
-        model = layers.Dense(HPDenseUnits, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(model)
-        model = layers.Dropout(HPDropout)(model)
-        model = layers.Dense(HPDenseUnits, activation = "relu", kernel_regularizer=regularizers.l2(HPRegularization))(model)
-        ModelOutput = layers.Dense(2, activation = "softmax")(model)
-        
-        model = tf.keras.Model(
-            inputs=[CNNSection.input, MetadataInput],
-            outputs=ModelOutput
-        )
-        
-        model.compile(
-            optimizer = tf.keras.optimizers.Adam(learning_rate = HPLearningRate),
-            loss = tf.keras.losses.SparseCategoricalCrossentropy(),
-            metrics = ["accuracy"]
-            )
-      
-        return model
-    
-    tuner = kt.Hyperband(
-        ModelBuilder,
-        objective='val_accuracy',
-        max_epochs=20,
-        factor = 3,
-        directory="CAIRD_HP",
-        project_name="CAIRDLatestTraining",
-        hyperband_iterations = 5
-        )
-    
-    StopEarly = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience = 5)
-    
-    tuner.search([TrainImgs, TrainMetadata], TrainLabels, epochs = 50, validation_split = 0.1, callbacks = [StopEarly], class_weight=ClassWeights)
-    
-    BestParams = tuner.get_best_hyperparameters(num_trials = 1)[0]
-    
-    print(BestParams.values, "PARAMS")
-    
-    PerfCallback = PerformancePlotCallback(TestImgs, TestMetadata, TestLabels, "HP")
-    
-    model = tuner.hypermodel.build(BestParams)
-    model.summary()
-    
-    PerfCallback = PerformancePlotCallback(TestImgs, TestMetadata, TestLabels, "HP")
-    
-    gc.collect()
-    
-    model = ModelBuilder(BestParams)
-    
-    history = model.fit([TrainImgs, TrainMetadata], TrainLabels, epochs=50, validation_split=0.1, callbacks=[PerfCallback])
+    history = model.fit(TrainData,
+                        validation_data = ValData,
+                        epochs=50,
+                        callbacks=[PerfCallback],
+                        class_weight = ClassWeights,
+                        batch_size = BatchSize
+                        )
     val_acc_per_epoch = history.history['val_accuracy']
     best_epoch = val_acc_per_epoch.index(max(val_acc_per_epoch)) + 1
     print('Best epoch: %d' % (best_epoch,))
     
-    del model, history
-    gc.collect()
+    model.save_weights(os.path.join(CAIRD.MLDir, "FullEpoch"))
     
-    hypermodel = tuner.hypermodel.build(BestParams)
+    del model
     
-    print(BestParams.values, "PARAMS")
+    model = ConvNeXt()
+    CompileNN(model)
     
-    del tuner
-    gc.collect()
-    
-    hypermodel.fit([TrainImgs, TrainMetadata], TrainLabels, epochs=best_epoch, validation_split=0.1)
-    
-    hypermodel.save(os.path.join(MLDir, "CAIRDLatestTraining.keras"))
-    
-    hypermodel = tf.keras.models.load_model(os.path.join(MLDir, "CAIRDLatestTraining.keras"))
-    
-    Predictions = hypermodel.predict([TestImgs, TestMetadata])
-    
-    #TestLoss, TestAcc = hypermodel.evaluate([TestImgs, TestMetadata], TestLabels, verbose=2)
+    history = model.fit(TrainData,
+                        validation_data = ValData,
+                        epochs=best_epoch,
+                        callbacks=[PerfCallback],
+                        class_weight = ClassWeights,
+                        batch_size = BatchSize
+                        )
+    model.save_weights(os.path.join(CAIRD.MLDir, "CompleteTrainingWeights"))
+    Predictions = model.predict(TestData)
+    print(Predictions)
+    TestLoss, TestAcc = model.evaluate(TestData, verbose=2)
     
     # Get the class with the highest probability
     
-    #print("\nTest accuracy:", TestAcc)
-    
-    sncount = 0
-    boguscount = 0
-    for i in Predictions:
-        if i[0] >= 0.5:
-            sncount += 1
-        if i[1] >= 0.5:
-            boguscount += 1
-    
-    print(sncount, boguscount, "SN AND BOGUS COUNTS")
-    
-    print(TestImgs.shape)
-    print(TestMetadata.shape)
+    print("\nTest accuracy:", TestAcc)
     
     plt.hist(Predictions[0], bins=20)
     plt.xlabel("Confidence in class")
     plt.ylabel("Number of images")
     plt.show()
+
+
 
 
 """
@@ -293,15 +230,64 @@ Takes the image and and metadata as inputs and returns classification confidence
 def ClassifyImage(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax): # I cannot describe how good it feels to finally have this function
     
     InputImg, InputMD = CAIRDIngest.InputProcessor(scipath, refpath, diffpath, "", xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-
+    
     InputMD = np.asarray(InputMD)
 
     InputImg, InputMD = np.array([InputImg]), np.array([InputMD])
 
-    model = tf.keras.models.load_model(os.path.join(CAIRD.MLDir, "CAIRDLatestTraining.keras"))
+    model = ConvNeXt()
+    model.load_weights("NewTraining.weights.h5")
+    CompileNN(model)
     Prediction = model.predict(InputImg)
     PredictionDict = {"Bogus": Prediction[0][0],
                       "SN": Prediction[0][1]}
     return PredictionDict
 
 #BuildCAIRD(CAIRD.MLDir, CAIRD.DatabaseDir)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
