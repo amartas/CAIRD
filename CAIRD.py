@@ -39,8 +39,8 @@ def BuildCAIRD(MLDir, DatabaseDir):
 def Reviewer(inputdir, n_imgs, outputdir):
     CAIRDIngest.Reviewer(inputdir, n_imgs, outputdir)
     
-def InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
-    return CAIRDIngest.InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None)
+def InputProcessor(scipath, refpath, diffpath, DoStamp, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
+    return CAIRDIngest.InputProcessor(scipath, refpath, diffpath, DoStamp, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None)
     
 def ClassifyImage(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax):
     return CAIRD_ML.ClassifyImage(scipath, refpath, diffpath, outputdir, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)

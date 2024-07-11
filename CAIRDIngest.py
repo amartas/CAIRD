@@ -212,7 +212,7 @@ others - Metadata required for ML to function:
 
 """
 
-def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
+def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None, DoStamp = True):
     
     if os.path.exists(img) == False:
         print("Missing file")
@@ -222,7 +222,10 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
         # Extracts the data
         data = hdu1[0].data
         y, x = data.shape
-        stamp = data # (doesn't) Crops the image
+        if DoStamp == True:
+            stamp = data[int(y_pos) - 25 : int(y_pos) + 25, int(x_pos) - 25 : int(x_pos) + 25] # Crops the image
+        else:
+            stamp = data # Doesn't crop the image
         
         # Uniformity check
         UniformityCheck(stamp, 4)
@@ -309,11 +312,11 @@ A wrapper function which takes in the 3 images, their metadata, the output direc
 """
 
 
-def InputProcessor(scipath, refpath, diffpath, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
+def InputProcessor(scipath, refpath, diffpath, DoStamp, outputdir, xpos, ypos, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None):
     
-    SciImg, SciMD = Stamper(scipath, os.path.join(outputdir, "ProcessorTemp.clean.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-    RefImg, RefMD = Stamper(refpath, os.path.join(outputdir, "ProcessorTemp.ref.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
-    DiffImg, DiffMD = Stamper(diffpath, os.path.join(outputdir, "ProcessorTemp.diff.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
+    SciImg, SciMD = Stamper(scipath, os.path.join(outputdir, "ProcessorTemp.clean.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax, DoStamp = DoStamp)
+    RefImg, RefMD = Stamper(refpath, os.path.join(outputdir, "ProcessorTemp.ref.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax, DoStamp = DoStamp)
+    DiffImg, DiffMD = Stamper(diffpath, os.path.join(outputdir, "ProcessorTemp.diff.fits"), False, xpos, ypos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax, DoStamp = DoStamp)
     
     StackedImg = np.stack((SciImg, RefImg, DiffImg), axis=2)
     
@@ -331,7 +334,7 @@ def ImageGenerator(cleanpath):
         else:
             continue
         try:
-            StackedImg, StackMD = InputProcessor(scipath, refpath, diffpath, "", 25, 25)
+            StackedImg, StackMD = InputProcessor(scipath, refpath, diffpath, False, "", 25, 25)
             for n in range(1, 4):
                 yield np.rot90(StackedImg, n), label
         except CAIRDExceptions.CorruptImage as Error:
@@ -358,191 +361,3 @@ def DatasetGenerator():
     dataset = dataset.batch(64).prefetch(buffer_size=tf.data.AUTOTUNE).shuffle(buffer_size = 256, seed = CAIRD.Randnum + CAIRD.Randnum)
     dataset.save(os.path.join(CAIRD.DatabaseDir, "TF/CurrentDataset"))
     print("Dataset saved!")
-    
-def DatasetPreparation(dim):  # Prepares the numpy arrays for ML training
-
-    def DatasetStacker(dim):
-        count = 0
-        
-        imgcount = sum([len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/Bogus/"))),
-                          len(os.listdir(os.path.join(DatabaseDir, "ProcessedData/SN/")))
-                          ])
-        ImgDatabase = np.empty((imgcount//3 * 4, dim, dim, 3))
-        ImgLabels = np.empty((imgcount//3 * 4))
-        #ImgMetadata = np.empty((imgcount//3 * 4, 6))
-        print(ImgDatabase.shape)
-        
-        count = 0
-        badcount = 0
-        for scipath in glob(os.path.join(DatabaseDir, "SortedData/Bogus/*/*.clean.fits")):
-            refpath = scipath[:-10] + "ref.fits"
-            diffpath = scipath[:-10] + "diff.fits"
-            
-            if os.path.exists(refpath) == False or os.path.exists(diffpath) == False:
-                print("Missing files")
-                badcount += 1
-                continue
-            
-            print(refpath)
-            try:
-                StackedImg, StackMD = InputProcessor(scipath, refpath, diffpath, "", 25, 25)
-                ImgDatabase[count] = StackedImg
-                #ImgMetadata[count] = StackMD
-                ImgLabels[count] = 0
-                print("Processed bogus image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 1)
-                #ImgMetadata[count] = StackMD
-                ImgLabels[count] = 0
-                print("Processed bogus image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 2)
-                #ImgMetadata[count] = StackMD
-                ImgLabels[count] = 0
-                print("Processed bogus image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 3)
-                #ImgMetadata[count] = StackMD
-                ImgLabels[count] = 0
-                print("Processed bogus image", count)
-                count += 1
-            except CAIRDExceptions.CorruptImage as Error:
-                print(Error)
-                badcount += 1
-                continue
-                
-        for scipath in glob(os.path.join(DatabaseDir, "SortedData/SN/*.clean.fits")):
-            refpath = scipath[:-10] + "ref.fits"
-            diffpath = scipath[:-10] + "diff.fits"
-            print(refpath)
-            
-            try:
-                StackedImg, StackMD = InputProcessor(scipath, refpath, diffpath, "", 25, 25)
-                ImgDatabase[count] = StackedImg
-                #ImgMetadata[count] = StackMD
-                ImgLabels[count] = 1
-                print("Processed bogus image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 1)
-                #ImgMetadata[count] = StackMD
-                ImgLabels[count] = 1
-                print("Processed bogus image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 2)
-                #ImgMetadata[count] = StackMD
-                ImgLabels[count] = 1
-                print("Processed bogus image", count)
-                count += 1
-                ImgDatabase[count] = np.rot90(StackedImg, 3)
-                #ImgMetadata[count] = StackMD
-                ImgLabels[count] = 1
-                print("Processed bogus image", count)
-                count += 1
-            except CAIRDExceptions.CorruptImage as Error:
-                print(Error)
-                badcount += 1
-                continue
-
-        ImgDatabase = ImgDatabase[:(-4 * badcount - 1)]
-        #ImgMetadata = ImgMetadata[:(-4 * badcount - 1)] 
-        ImgLabels = ImgLabels[:(-4 * badcount - 1)]
-        
-        print(badcount, "Bad image count")
-
-
-        print(ImgDatabase.shape, ImgLabels.shape, "Shapes")
-        
-        # Holdout construction
-        
-        ImgDatabase = ImgDatabase.astype(np.float32)
-        print(ImgDatabase.dtype, "DATABASE DTYPE")
-        
-        ImgDatabase, ImgLabels = shuffle(ImgDatabase, ImgLabels, random_state=CAIRD.Randnum)
-        print(ImgDatabase.shape, ImgLabels.shape)
-        
-        HoldoutSize = int(len(ImgDatabase) * 0.05)
-        print(HoldoutSize)
-        
-        ImgDatabase, Holdout1Imgs = ImgDatabase[:(-1 * HoldoutSize)], ImgDatabase[(-1 * HoldoutSize):]
-        ImgLabels, Holdout1Labels = ImgLabels[:(-1 * HoldoutSize)], ImgLabels[(-1 * HoldoutSize):]
-        #ImgMetadata, Holdout1Metadata = ImgMetadata[:(-1 * HoldoutSize)], ImgMetadata[(-1 * HoldoutSize):]
-        
-        print(ImgDatabase.shape, ImgLabels.shape)
-        
-        ImgDatabase, Holdout2Imgs = ImgDatabase[:(-1 * HoldoutSize)], ImgDatabase[(-1 * HoldoutSize):]  # You'd better have a damn good reason for touching this holdout
-        ImgLabels, Holdout2Labels = ImgLabels[:(-1 * HoldoutSize)], ImgLabels[(-1 * HoldoutSize):]
-        #ImgMetadata, Holdout2Metadata = ImgMetadata[:(-1 * HoldoutSize)], ImgMetadata[(-1 * HoldoutSize):]
-        
-        TrainImgs, TestImgs, TrainLabels, TestLabels = train_test_split(ImgDatabase, ImgLabels, random_state=CAIRD.Randnum, test_size=0.05)
-        del ImgDatabase, ImgLabels
-        
-        MMTrainImgs = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/TrainImgs.memmap"), dtype = TrainImgs.dtype, mode = "w+", shape = TrainImgs.shape)
-        MMTrainLabels = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/ImgLabels.memmap"), dtype = TrainLabels.dtype, mode = "w+", shape = TrainLabels.shape)
-        
-        MMTestImgs = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/TestImgs.memmap"), dtype = TestImgs.dtype, mode = "w+", shape = TestImgs.shape)
-        MMTestLabels = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/TestLabels.memmap"), dtype = TestLabels.dtype, mode = "w+", shape = TestLabels.shape)
-        
-        #MMImgMetadata = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/ImgMetadata.memmap"), dtype = ImgMetadata.dtype, mode = "w+", shape = ImgMetadata.shape)
-        
-        MMTrainImgs[:] = TrainImgs[:]
-        MMTrainImgs.flush()
-        MMTrainLabels[:] = TrainLabels[:]
-        MMTrainLabels.flush()
-        
-        MMTestImgs[:] = TestImgs[:]
-        MMTestImgs.flush()
-        MMTestLabels[:] = TestLabels[:]
-        MMTestLabels.flush()
-        
-        
-        #MMImgMetadata[:] = ImgMetadata[:]
-        #MMImgMetadata.flush()
-        
-        MMHoldout1Imgs = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout1Imgs.memmap"), dtype = Holdout1Imgs.dtype, mode = "w+", shape = Holdout1Imgs.shape)
-        MMHoldout1Labels = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout1Labels.memmap"), dtype = Holdout1Labels.dtype, mode = "w+", shape = Holdout1Labels.shape)
-        #MMHoldout1Metadata = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout1Metadata.memmap"), dtype = Holdout1Metadata.dtype, mode = "w+", shape = Holdout1Metadata.shape)
-        
-        MMHoldout1Imgs[:] = Holdout1Imgs[:]
-        MMHoldout1Imgs.flush()
-        MMHoldout1Labels[:] = Holdout1Labels[:]
-        MMHoldout1Labels.flush()
-        #MMHoldout1Metadata[:] = Holdout1Metadata[:]
-        #MMHoldout1Metadata.flush()
-        
-        MMHoldout2Imgs = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout2Imgs.memmap"), dtype = Holdout2Imgs.dtype, mode = "w+", shape = Holdout2Imgs.shape)
-        MMHoldout2Labels = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout2Labels.memmap"), dtype = Holdout2Labels.dtype, mode = "w+", shape = Holdout2Labels.shape)
-        #MMHoldout2Metadata = np.memmap(os.path.join(CAIRD.DatabaseDir, "Arrays/Holdout2Metadata.memmap"), dtype = Holdout2Metadata.dtype, mode = "w+", shape = Holdout2Metadata.shape)
-        
-        #print(ImgDatabase.dtype)
-        
-        ArrInfo =  {
-                   "TrainImgs": TrainImgs.shape,
-                   "TrainLabels": TrainLabels.shape,
-                   "TestImgs": TestImgs.shape,
-                   "TestLabels": TestLabels.shape,
-                   #"ImgMetadata": ImgMetadata.shape,
-                   "Holdout1Imgs": Holdout1Imgs.shape,
-                   "Holdout1Labels": Holdout1Labels.shape,
-                   #"Holdout1Metadata": Holdout1Metadata.shape,
-                   "Holdout2Imgs": Holdout2Imgs.shape,
-                   "Holdout2Labels": Holdout2Labels.shape,
-                   #"Holdout2Metadata": Holdout2Metadata.shape
-                   }
-        
-        DatabaseInfo = open(os.path.join(CAIRD.DatabaseDir, "Arrays/DatasetInfo.dict"), "w")
-        DatabaseInfo.write(str(ArrInfo))
-        DatabaseInfo.close()
-        
-        
-        
-        MMHoldout2Imgs[:] = Holdout2Imgs[:]
-        MMHoldout2Imgs.flush()
-        MMHoldout2Labels[:] = Holdout2Labels[:]
-        MMHoldout2Labels.flush()
-        #MMHoldout2Metadata[:] = Holdout2Metadata[:]
-        #MMHoldout2Metadata.flush()
-        
-        
-        print("Finished dataset creation")
-    
-    DatasetStacker(dim)
