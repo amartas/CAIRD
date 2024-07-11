@@ -224,6 +224,7 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
         y, x = data.shape
         if DoStamp == True:
             stamp = data[int(y_pos) - 25 : int(y_pos) + 25, int(x_pos) - 25 : int(x_pos) + 25] # Crops the image
+            print("Stamped")
         else:
             stamp = data # Doesn't crop the image
         
