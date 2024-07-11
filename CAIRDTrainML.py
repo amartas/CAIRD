@@ -10,5 +10,5 @@ MLDir = CAIRD.MLDir
 
 
 # Ingest training data, preprocess it, and then build a new CAIRD model
-CAIRDIngest.DatasetPreparation(28)
+#CAIRDIngest.DatasetGenerator()
 CAIRD.BuildCAIRD(MLDir, DatabaseDir)
