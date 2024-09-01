@@ -9,6 +9,7 @@ from astropy.io import fits
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
@@ -24,6 +25,32 @@ import CAIRDExceptions
 import CAIRD
 
 DatabaseDir = CAIRD.DatabaseDir
+
+
+"""
+
+UniformityCheck(image, edge_width)
+
+Determines whether images were taken at the edge of the chip by detecting if the corners have atypically uniform values (e.g. zeros from filling or padding of the image).
+
+image      - Input image to be checked
+
+edge_width - Length along the edge to check for uniformity
+
+"""
+
+def UniformityCheck(image, edge_width):
+    # Check top, bottom, left, right edges
+    top_left_corner = image[:edge_width, :edge_width]
+    top_right_corner = image[:edge_width, -edge_width:]
+    bottom_left_corner = image[-edge_width:, :edge_width]
+    bottom_right_corner = image[-edge_width:, -edge_width:]
+
+    # Check if these edges are uniform
+    edges = [top_left_corner, top_right_corner, bottom_left_corner, bottom_right_corner]
+    for edge in edges:
+        if np.unique(edge).size == 1:
+            raise CAIRDExceptions.CorruptImage("Uniformity check failed")
 
 
 """
@@ -54,6 +81,18 @@ def Reviewer(inputdir, n_imgs, outputdir):
                     SciData = hdu1[0].data
                     RefData = hdu2[0].data
                     DiffData = hdu3[0].data
+                    
+                    
+                    if SciData.shape != (50,50) or SciData is None or SciData.shape == 0:
+                        raise CAIRDExceptions.CorruptImage("Dimension check failed")
+                        pass
+                    if RefData.shape != (50,50) or RefData is None or RefData.shape == 0:
+                        raise CAIRDExceptions.CorruptImage("Dimension check failed")
+                        pass
+                    if DiffData.shape != (50,50) or DiffData is None or DiffData.shape == 0:
+                        raise CAIRDExceptions.CorruptImage("Dimension check failed")
+                        pass
+                    
                     index = 1
                     for img in [SciData, RefData, DiffData]:
                         plt.subplot(1, 3, index)
@@ -66,8 +105,41 @@ def Reviewer(inputdir, n_imgs, outputdir):
                             plt.xlabel("Difference")
                         plt.xticks([])
                         plt.yticks([])
-                        plt.imshow(img, cmap=plt.cm.binary)
+                        plt.imshow(img, cmap=plt.cm.binary_r)
                         index += 1
+
+
+                    height, width = 50, 50
+
+                    # Create meshgrid
+                    X, Y = np.meshgrid(np.arange(width), np.arange(height))
+                    
+                    # Find the maximum range of pixel values across all channels
+                    max_value = max(SciData.max(), RefData.max(), DiffData.max())
+                    min_value = min(SciData.min(), RefData.min(), DiffData.min())
+                    
+                    # Create surface plot
+                    def HeightPlot(channel_data, channel_name, ax, min_value, max_value):
+                        ax.plot_surface(X, Y, channel_data, cmap="gray")
+                        ax.set_xlabel("X")
+                        ax.set_ylabel("Y")
+                        ax.set_zlabel("Brightness")
+                        ax.set_title(f"3D Surface Plot of {channel_name} Channel")
+
+                    # Create subplots
+                    fig = plt.figure(figsize=(18, 6))
+
+                    # Plot channels
+                    ax1 = fig.add_subplot(131, projection="3d")
+                    HeightPlot(SciData, "Science", ax1, min_value, max_value)
+
+                    ax2 = fig.add_subplot(132, projection="3d")
+                    HeightPlot(RefData, "Reference", ax2, min_value, max_value)
+
+                    ax3 = fig.add_subplot(133, projection="3d")
+                    HeightPlot(DiffData, "Difference", ax3, min_value, max_value)
+        
+        plt.tight_layout()
         plt.show(block=False)
 
     def ImageTagger(scipath, tag, outputpath):
@@ -80,20 +152,20 @@ def Reviewer(inputdir, n_imgs, outputdir):
 
     def InputChecker():
         while True:
-            ident = input("Class [a, v, s, t]: ")
-            if ident in ["a", "v", "s", "t"]:
+            ident = input("Class [b, v, s, t, l]: ")
+            if ident in ["b", "v", "s", "t", "l"]:
                 return ident
 
     class AlreadyClassified(Exception):
         pass
     
-    FPArtifacts = len(glob(outputdir + "Artifacts/*.clean.fits")) + 1
-    FPVarStars = len(glob(outputdir + "VarStars/*.clean.fits"))
-    FPSN = len(glob(outputdir + "SN/*.clean.fits"))
-    FPSat = len(glob(outputdir + "Satellites/*.clean.fits"))
+    FPArtifacts = len(glob.glob(outputdir + "Artifacts/*.clean.fits")) + 1
+    FPVarStars = len(glob.glob(outputdir + "VarStars/*.clean.fits"))
+    FPSN = len(glob.glob(outputdir + "SN/*.clean.fits"))
+    FPSat = len(glob.glob(outputdir + "Satellites/*.clean.fits"))
     imgcount = 0
     print(FPArtifacts, FPVarStars, FPSN, FPSat)
-    for scipath in glob(inputdir + "*.clean.fits"):
+    for scipath in glob.glob(inputdir + "*.clean.fits"):
         try:
             with fits.open(scipath) as hdu4:
                 prevclass = hdu4[0].header["CLASSID"]
@@ -110,7 +182,11 @@ def Reviewer(inputdir, n_imgs, outputdir):
             print("Not classified")
             refpath = scipath[:-10] + "ref.fits"
             diffpath = scipath[:-10] + "diff.fits"
-            DisplayImg(scipath, refpath, diffpath)
+            try:
+                DisplayImg(scipath, refpath, diffpath)
+            except CAIRDExceptions.CorruptImage as Error:
+                print(Error)
+                continue
             print("Previously classified as", prevclass)
             if imgcount >= n_imgs:
                 print("Classification batch complete")
@@ -160,31 +236,6 @@ def Reviewer(inputdir, n_imgs, outputdir):
 
 """
 
-UniformityCheck(image, edge_width)
-
-Determines whether images were taken at the edge of the chip by detecting if the corners have atypically uniform values (e.g. zeros from filling or padding of the image).
-
-image      - Input image to be checked
-
-edge_width - Length along the edge to check for uniformity
-
-"""
-
-def UniformityCheck(image, edge_width):
-    # Check top, bottom, left, right edges
-    top_left_corner = image[:edge_width, :edge_width]
-    top_right_corner = image[:edge_width, -edge_width:]
-    bottom_left_corner = image[-edge_width:, :edge_width]
-    bottom_right_corner = image[-edge_width:, -edge_width:]
-
-    # Check if these edges are uniform
-    edges = [top_left_corner, top_right_corner, bottom_left_corner, bottom_right_corner]
-    for edge in edges:
-        if np.unique(edge).size == 1:
-            raise CAIRDExceptions.CorruptImage("Uniformity check failed")
-
-"""
-
 Stamper(img, output, x_pos, y_pos, CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, bkg, fluxmax)
 
 Stamps an input image to 21x21, pads it to 51x51, and saves it.
@@ -212,7 +263,7 @@ others - Metadata required for ML to function:
 
 """
 
-def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None, DoStamp = True):
+def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, RA = None, DEC = None, fluxrad = None, ellipticity = None, fwhm = None, bkg = None, fluxmax = None, DoStamp = True, DoCheck = False):
     
     if os.path.exists(img) == False:
         print("Missing file")
@@ -244,11 +295,11 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
             ellipticity = hdu1[0].header["ELLIPTICITY"]
             fwhm = hdu1[0].header["FWHM"]
             fluxmax = hdu1[0].header["FLUXMAX"]
-            """
-            for item in [CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, fluxmax]:
-                if type(item) == str: # Missing data gets inputted as a blank float - this catches it
-                    raise CAIRDExceptions.CorruptImage("Missing metadata")
-            """
+            if DoCheck == True:
+                for item in [CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, fluxmax]:
+                    if type(item) == str: # Missing data gets inputted as a blank float - this catches it
+                        raise CAIRDExceptions.CorruptImage("Missing metadata")
+            
             # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
             if stamp.shape != (50,50) or stamp is None or stamp.shape == 0:
                 print(stamp.shape)
@@ -274,11 +325,12 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
             hdu1[0].header["ELLIPTICITY"] = ellipticity
             hdu1[0].header["FWHM"] = fwhm
             hdu1[0].header["FLUXMAX"] = fluxmax
-            """
-            for item in [CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, fluxmax]:
-                if type(item) == str: # Missing data gets inputted as a blank float - this catches it
-                    raise CAIRDExceptions.CorruptImage("Missing metadata")
-           """ 
+            
+            if DoCheck == True:
+                for item in [CID, TID, RA, DEC, fluxrad, ellipticity, fwhm, fluxmax]:
+                    if type(item) == str: # Missing data gets inputted as a blank float - this catches it
+                        raise CAIRDExceptions.CorruptImage("Missing metadata")
+            
             # Checks if the dimension of the images is correct in case the stamp was near the edge of the frame
             if stamp.shape != (50, 50) or stamp is None or stamp.shape == 0:
                 print(stamp.shape)
@@ -302,6 +354,7 @@ def Stamper(img, output, save, x_pos = 25, y_pos = 25, CID = None, TID = None, R
         if save == True:
             fits.writeto(output, stamp, hdu1[0].header, overwrite=True)
         else:
+            print(img)
             return stamp, [RA, DEC, fwhm, ellipticity, fluxrad, fluxmax]
 
 """
@@ -332,6 +385,10 @@ def ImageGenerator(cleanpath):
             label = 0
         elif "/SN/" in scipath:
             label = 1
+        elif "/VarStars/" in scipath:
+            label = 2
+        elif "/Limit/" in scipath:
+            label = 3
         else:
             continue
         try:

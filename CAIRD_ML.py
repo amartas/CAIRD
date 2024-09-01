@@ -25,7 +25,7 @@ import CAIRDIngest
 import CAIRD
 
 gc.enable()
-ClassNames = ["Artifact", "SN"]
+ClassNames = ["Artifact", "SN", "VarStar", "Limit"]
 randnum = CAIRD.Randnum
 strategy = tf.distribute.MirroredStrategy()
 
@@ -53,7 +53,7 @@ class PerformancePlotCallback(tf.keras.callbacks.Callback):
         PredictedClasses = np.argmax(Predictions, axis=1)
     
         conf_matrix = tf.math.confusion_matrix(
-            TestLabels, PredictedClasses, num_classes=2)
+            TestLabels, PredictedClasses, num_classes=4)
         conf_matrix = tf.cast(conf_matrix, dtype=tf.float32)
     
         # Normalize the confusion matrix
@@ -79,14 +79,14 @@ class PerformancePlotCallback(tf.keras.callbacks.Callback):
 
 def ConvNeXt():
     model = tf.keras.applications.ConvNeXtTiny(
-                    model_name="convnext_tiny",
+                    #model_name="convnext_tiny",
                     include_top=True,
                     include_preprocessing=True,
                     weights=None,
                     input_tensor=None,
                     input_shape=(50,50,3),
                     pooling="max",
-                    classes=2,
+                    classes=4,
                     classifier_activation="softmax",
                     )
     return model
@@ -163,10 +163,20 @@ def BuildCAIRD(MLDir, DatabaseDir):
     TrainLabels = np.concatenate([y for x, y in TrainData], axis=0)
     print(len(TrainLabels), "TL LENGTH")
     objecttype, counts = np.unique(TrainLabels, return_counts = True)
-    
+
     ClassWeights = {0: np.max(counts)/counts[0], # Normalize training dataset weights
-                    1: np.max(counts)/counts[1]
+                    1: np.max(counts)/counts[1],
+                    2: np.max(counts)/counts[2],
+                    3: np.max(counts)/counts[3]
                     }
+    print(ClassWeights, "CLASS WEIGHTS CLASS WEIGHTS CLASS WEIGHTS CLASS WEIGHTS CLASS WEIGHTS")
+    """
+    ClassWeights = {0: 1, # Normalize training dataset weights
+                    1: 1,
+                    2: 1,
+                    3: 1
+                    }
+    """
     del TrainLabels, objecttype, counts
     print(ClassWeights, "Class Weights")
     
@@ -202,7 +212,7 @@ def BuildCAIRD(MLDir, DatabaseDir):
                         class_weight = ClassWeights,
                         batch_size = BatchSize
                         )
-    model.save_weights(os.path.join(CAIRD.MLDir, "CompleteTrainingWeights"))
+    model.save_weights(os.path.join(CAIRD.MLDir, "CompleteTrainingWeights.weights.h5"))
     Predictions = model.predict(TestData)
     print(Predictions)
     TestLoss, TestAcc = model.evaluate(TestData, verbose=2)
@@ -242,52 +252,3 @@ def ClassifyImage(scipath, refpath, diffpath, xpos, ypos, CID, TID, RA, DEC, flu
     PredictionDict = {"Bogus": Prediction[0][0],
                       "SN": Prediction[0][1]}
     return PredictionDict
-
-#BuildCAIRD(CAIRD.MLDir, CAIRD.DatabaseDir)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
