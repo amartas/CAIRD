@@ -250,5 +250,8 @@ def ClassifyImage(scipath, refpath, diffpath, xpos, ypos, CID, TID, RA, DEC, flu
     CompileNN(model)
     Prediction = model.predict(InputImg)
     PredictionDict = {"Bogus": Prediction[0][0],
-                      "SN": Prediction[0][1]}
+                      "SN": Prediction[0][1],
+                      "VarStar": Prediction[0][2],
+                      "Limit": Prediction[0][3]
+                      }
     return PredictionDict
